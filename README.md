@@ -246,4 +246,5 @@ templates:
 ## Examples
 You can view complete examples in the `examples/` folder. 
 
-*Note:* have not developed a accompaning config file tho, so it is just)
+> 🔍 **Note:** 
+> I have not developed a accompaning config file tho, so it is just generating the meta alone, without ensuring that it is consistent with a config. May add this feature soon.
