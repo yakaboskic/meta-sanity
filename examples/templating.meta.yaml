@@ -1,0 +1,108 @@
+config: "/path/to/config.cfg"
+
+keys:
+  base_dir: "/lab/experiments"
+  data_dir: "${base_dir}/data"
+  results_dir: "${base_dir}/results"
+  default_umask: "002"
+
+# Define some subsets/tags we can use for filtering
+subsets:
+  - name: high_priority
+    description: "High priority experiments"
+  - name: automated
+    description: "Automated experiments"
+  - name: manual
+    description: "Manual experiments"
+
+classes:
+  # Normal class definitions (no templating needed)
+  lab_project:
+    class: project
+    parent: null
+    properties:
+      project_lead: "smith_jane"
+      start_date: "20240101"
+  
+  microscopy:
+    class: equipment
+    parent: lab_project
+    properties:
+      location: "room_101"
+      maintenance_schedule: "monthly"
+
+  sequencing:
+    class: equipment
+    parent: lab_project
+    properties:
+      location: "room_102"
+      maintenance_schedule: "weekly"
+
+templates:
+  # Example of for_each_item
+  # Creates standard samples we use in the lab
+  standard_samples:
+    class: sample
+    operation: for_each_item
+    input:
+      - control_a
+      - control_b
+      - treatment_1
+      - treatment_2
+      - treatment_3
+    pattern:
+      name: "sample__${item}"
+      properties:
+        sample_type: "${item}"
+        storage_temp: "neg_80c"
+    parent: lab_project
+    subsets:
+      - automated
+
+  # Example of for_each_class
+  # Creates analysis tasks for each sample
+  sample_analysis:
+    class: analysis
+    operation: for_each_class
+    input:
+      class_name: sample
+      if_subset: [automated]  # Only for automated samples
+    prefix: analysis
+    pattern:
+      name: "${prefix}__${item}"
+      properties:
+        target_sample: "${item}"
+        output_dir: "${results_dir}/${item}"
+    parent: 
+      - microscopy  # These analyses require microscopy equipment
+
+  # Example of iter.combination
+  # Creates experiments combining samples with different conditions
+  experiment_combinations:
+    class: experiment
+    operation: iter.combination
+    input:
+      - name: sample
+        class_name: sample
+        if_subset: [automated]
+      - name: temperature
+        values:
+          - "4c"
+          - "22c"
+          - "37c"
+      - name: duration
+        values:
+          - "12h"
+          - "24h"
+          - "48h"
+    prefix: exp
+    pattern:
+      name: "${prefix}__${item:sample}__temp_${item:temperature}__dur_${item:duration}"
+      properties:
+        sample_id: "${item:sample}"
+        incubation_temp: "${item:temperature}"
+        duration: "${item:duration}"
+        data_path: "${data_dir}/${item:sample}/${item:temperature}/${item:duration}"
+    parent: "analysis__${item:sample}"  # Each experiment depends on its sample analysis
+    subsets:
+      - high_priority  # Tag these as high priority experiments

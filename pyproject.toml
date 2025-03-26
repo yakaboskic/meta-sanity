@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "meta-sanity"
+version = "0.1.0"
+description = "A tool for generating structured meta files with support for templating and inheritance patterns"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    {name = "Your Organization"}
+]
+dependencies = [
+    "pyyaml>=6.0.1",
+]
+
+[project.scripts]
+generate-meta = "meta_sanity.generate_meta:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["meta_sanity"] 
