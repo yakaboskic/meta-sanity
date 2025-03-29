@@ -178,15 +178,16 @@ meta_content = generate_meta(config, ignore_classes=[
 > 1. During development, generate a smaller meta file by ignoring specific patterns:
 >    ```bash
 >    # Quick refresh for UI testing - ignore heavy analysis tasks
->    generate-meta -y config.yaml -o dev.meta --ignore-class "analysis:(?!quick).*"
+>    generate-meta config.yaml my.meta --ignore-class "analysis:(?!quick).*"
 >    ```
 >    This example keeps only analyses with "quick" in their name.
 > 
 > 2. When ready for production, generate the complete meta file:
 >    ```bash
 >    # Full generation for actual runs
->    generate-meta -y config.yaml -o production.meta
+>    generate-meta config.yaml my.meta
 >    ```
+>
 > 
 > The generation remains **deterministic**, meaning file structures and relationships stay consistent between partial and complete generations.
 
