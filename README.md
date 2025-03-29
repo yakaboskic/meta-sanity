@@ -31,7 +31,7 @@ Once installed, you can use the tool in two ways:
 
 1. Using the command-line tool:
 ```bash
-generate-meta -y your_config.yaml -o output.meta
+generate-meta your_config.yaml output.meta
 ```
 
 2. Using the Python module:
@@ -132,6 +132,108 @@ The generation sequence is as follows:
 >     ...
 > ```
 > To fix this, reorder the templates so `standard_samples` comes before `analysis_tasks`.
+
+## Ignoring Classes for Faster Development
+
+> 🚀 **Performance Tip**  
+> When working with large meta files, the web UI can become slow to refresh. The `ignore-class` feature lets you generate smaller, focused meta files for development while maintaining the ability to generate the complete meta file when needed.
+
+The `ignore-class` feature supports two syntax patterns:
+
+1. **Simple Class Ignore**: Ignore all instances of a specific class
+   ```bash
+   generate-meta config.yaml output.meta --ignore-class analysis
+   ```
+
+2. **Pattern-Based Ignore**: Ignore specific instances using regex patterns
+   ```bash
+   # Ignore analysis classes that contain 'qc' in their name
+   generate-meta -y config.yaml -o output.meta --ignore-class "analysis:.*qc.*"
+   
+   # Ignore sample classes starting with 'control'
+   generate-meta -y config.yaml -o output.meta --ignore-class "sample:^control.*"
+   ```
+
+You can combine multiple ignore patterns:
+```bash
+# Ignore all QC analyses and control samples
+generate-meta config.yaml output.meta \
+  --ignore-class "analysis:.*qc.*" \
+  --ignore-class "sample:^control.*"
+```
+
+In Python:
+```python
+# Simple class ignore
+meta_content = generate_meta(config, ignore_classes=['analysis'])
+
+# Pattern-based ignore
+meta_content = generate_meta(config, ignore_classes=[
+    'analysis:.*qc.*',
+    'sample:^control.*'
+])
+```
+
+> 💡 **Development Workflow**  
+> 1. During development, generate a smaller meta file by ignoring specific patterns:
+>    ```bash
+>    # Quick refresh for UI testing - ignore heavy analysis tasks
+>    generate-meta -y config.yaml -o dev.meta --ignore-class "analysis:(?!quick).*"
+>    ```
+>    This example keeps only analyses with "quick" in their name.
+> 
+> 2. When ready for production, generate the complete meta file:
+>    ```bash
+>    # Full generation for actual runs
+>    generate-meta -y config.yaml -o production.meta
+>    ```
+> 
+> The generation remains **deterministic**, meaning file structures and relationships stay consistent between partial and complete generations.
+
+### Example Use Case
+
+```yaml
+classes:
+  experiment:
+    class: project
+    parent: null
+    properties:
+      name: "large_scale_analysis"
+
+templates:
+  # These templates generate thousands of analysis tasks
+  qc_analysis:
+    class: analysis  # Can ignore with "analysis:.*qc.*"
+    operation: for_each_class
+    input:
+      class_name: sample
+    pattern:
+      name: "qc_${item}"
+    ...
+
+  heavy_analysis:
+    class: analysis  # Can ignore with "analysis:^heavy.*"
+    operation: for_each_class
+    input:
+      class_name: sample
+    pattern:
+      name: "heavy_${item}"
+    ...
+
+  # This template generates core sample definitions
+  core_samples:
+    class: sample   # Keep this for basic testing
+    operation: for_each_item
+    input: ...
+```
+
+> ⚡ **Important**  
+> When using `ignore-class`:
+> - Templates generating ignored classes are skipped entirely
+> - Pattern matching uses standard regex syntax
+> - Multiple patterns for the same class are combined with OR logic
+> - References to ignored classes in parent fields are treated as null
+> - The meta file structure remains valid, just with fewer entries
 
 ## Templating Features
 

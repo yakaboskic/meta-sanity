@@ -35,10 +35,31 @@ def resolve_keys(val, keys):
         val = val.replace(f"${{{key}}}", keys[key])
     return val
 
+def process_ignore_class(ignore_class):
+    if not ignore_class:
+        return {}
+    ignore_class_dict = {}
+    for ignore_class_item in ignore_class:
+        if ":" not in ignore_class_item:
+            logger.warning(f"Will ignore all instances of class '{ignore_class_item}'")
+            ignore_class_dict[ignore_class_item] = ".*"
+        else:
+            class_name, regex_pattern = ignore_class_item.split(':')
+            if class_name in ignore_class_dict:
+                raise ValueError(f"Duplicate ignore class: '{class_name}'")
+        ignore_class_dict[class_name] = regex_pattern
+    return ignore_class_dict
+
+def should_ignore_class(class_name, instance_name, ignore_class_dict):
+    if class_name in ignore_class_dict:
+        return re.match(ignore_class_dict[class_name], instance_name)
+    return False
+
 # Main meta-generation function
-def generate_meta(yaml_cfg):
+def generate_meta(yaml_cfg, ignore_class=None):
     lines = [f"!config {yaml_cfg['config']}"]
     keys = yaml_cfg.get('keys', {})
+    ignore_class_dict = process_ignore_class(ignore_class)
 
     # Write keys
     for k, v in keys.items():
@@ -54,6 +75,8 @@ def generate_meta(yaml_cfg):
 
     root_class_count = 0
     for cname, cdef in classes.items():
+        if should_ignore_class(cdef['class'], cname, ignore_class_dict):
+            continue
         parent = cdef.get('parent')
         if parent in [None, 'null']:
             root_class_count += 1
@@ -94,6 +117,8 @@ def generate_meta(yaml_cfg):
                 parent = [parent]
             for item in tmpl['input']:
                 instance_name = tmpl['pattern']['name'].replace("${item}", item)
+                if should_ignore_class(tmpl['class'], instance_name, ignore_class_dict):
+                    continue
                 # Check if the instance name already exists and is the same class (if so, it'll just try to add new parents)
                 is_duplicate = False
                 if instance_name in all_classes and all_classes[instance_name] == tmpl['class']:
@@ -110,19 +135,20 @@ def generate_meta(yaml_cfg):
                         else:
                             lines.append(f"{instance_name} parent {p}")
                         all_parents[instance_name].add(p)
-                for prop_key, prop_val in tmpl['pattern']['properties'].items():
-                    resolved_val = resolve_keys(prop_val.replace("${item}", item), keys)
-                    if is_duplicate:
-                        if all_instance_properties[instance_name][prop_key] == resolved_val:
-                            continue
-                        else:
-                            logger.warning(f"Duplicate instance name: '{instance_name}' with class '{tmpl['class']}', will attempt to add new property")
-                            lines.insert(class_last_line_idx[instance_name], f"{instance_name} {prop_key} {prop_val}")
-                            # Update the class last line index
-                            class_last_line_idx[instance_name] += 1
-                            continue
-                    lines.append(f"{instance_name} {prop_key} {resolved_val}")
-                    all_instance_properties[instance_name][prop_key] = resolved_val
+                if 'properties' in tmpl['pattern']:
+                    for prop_key, prop_val in tmpl['pattern']['properties'].items():
+                        resolved_val = resolve_keys(prop_val.replace("${item}", item), keys)
+                        if is_duplicate:
+                            if all_instance_properties[instance_name][prop_key] == resolved_val:
+                                continue
+                            else:
+                                logger.warning(f"Duplicate instance name: '{instance_name}' with class '{tmpl['class']}', will attempt to add new property")
+                                lines.insert(class_last_line_idx[instance_name], f"{instance_name} {prop_key} {prop_val}")
+                                # Update the class last line index
+                                class_last_line_idx[instance_name] += 1
+                                continue
+                        lines.append(f"{instance_name} {prop_key} {resolved_val}")
+                        all_instance_properties[instance_name][prop_key] = resolved_val
                 if not is_duplicate:
                     class_last_line_idx[instance_name] = len(lines)
                 for subset in tmpl.get('subsets', []):
@@ -134,14 +160,14 @@ def generate_meta(yaml_cfg):
             parent = get_template_parent()
             if isinstance(parent, str):
                 parent = [parent]
-            class_filter = tmpl['input']['class_name']
             subset_filter = tmpl['input'].get('if_subset', [])
             items = []
             for subset in subset_filter:
                 items.extend(subset_map.get(subset, []))
-
             for item in items:
                 instance_name = tmpl['pattern']['name'].replace("${prefix}", prefix).replace("${item}", item)
+                if should_ignore_class(tmpl['class'], instance_name, ignore_class_dict):
+                    continue
                 lines.append(f"\n{instance_name} class {tmpl['class']}")
                 all_classes[instance_name] = tmpl['class']
                 if parent:
@@ -181,6 +207,8 @@ def generate_meta(yaml_cfg):
                 
                 for k, v in item_dict.items():
                     instance_name = instance_name.replace(f"${{item:{k}}}", str(v))
+                if should_ignore_class(tmpl['class'], instance_name, ignore_class_dict):
+                    continue
                 lines.append(f"\n{instance_name} class {tmpl['class']}")
                 all_classes[instance_name] = tmpl['class']
                 if not parent:
@@ -194,13 +222,14 @@ def generate_meta(yaml_cfg):
                         p = p.replace(f"${{item:{k}}}", str(v))
                     lines.append(f"{instance_name} parent {p}")
 
-                for prop_key, prop_val in tmpl['pattern']['properties'].items():
-                    val = prop_val
-                    for k, v in item_dict.items():
-                        val = val.replace(f"${{item:{k}}}", str(v))
-                        # Find any other ${} references in the value and resolve them
-                        val = resolve_keys(val, keys)
-                    lines.append(f"{instance_name} {prop_key} {val}")
+                if 'properties' in tmpl['pattern']:
+                    for prop_key, prop_val in tmpl['pattern']['properties'].items():
+                        val = prop_val
+                        for k, v in item_dict.items():
+                            val = val.replace(f"${{item:{k}}}", str(v))
+                            # Find any other ${} references in the value and resolve them
+                            val = resolve_keys(val, keys)
+                        lines.append(f"{instance_name} {prop_key} {val}")
                 for subset in tmpl.get('subsets', []):
                     subset_map.setdefault(subset, []).append(instance_name)
 
@@ -212,14 +241,16 @@ def generate_meta(yaml_cfg):
 # Argparse interface
 def main():
     parser = argparse.ArgumentParser(description="Generate meta file from YAML config")
-    parser.add_argument("-y", "--yaml", required=True, help="Path to input YAML config")
-    parser.add_argument("-o", "--output", required=True, help="Path to output meta file")
-
+    parser.add_argument("yaml", help="Path to input YAML config")
+    parser.add_argument("output", help="Path to output meta file")
+    parser.add_argument("-y", "--yaml", dest="yaml", help=argparse.SUPPRESS)  # Hidden alias
+    parser.add_argument("-o", "--output", dest="output", help=argparse.SUPPRESS)  # Hidden alias
+    parser.add_argument("--ignore-class", action="append", default=None, help="Ignore a class based on a regex pattern match on the class name in the format {class_name}:{regex_pattern}")
     args = parser.parse_args()
 
     try:
         cfg = load_yaml(args.yaml)
-        meta_content = generate_meta(cfg)
+        meta_content = generate_meta(cfg, args.ignore_class)
         with open(args.output, 'w') as f:
             f.write(meta_content)
         logger.info(f"Meta file '{args.output}' generated successfully.")
