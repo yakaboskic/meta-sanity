@@ -55,6 +55,35 @@ def should_ignore_class(class_name, instance_name, ignore_class_dict):
         return re.match(ignore_class_dict[class_name], instance_name)
     return False
 
+def process_template_expr(template: str, item: str) -> str:
+    """Process template expressions of the form ${item.operation()}
+    Args:
+        template: String containing ${item...} expressions
+        item: The item value to substitute
+    Returns:
+        Processed string with all expressions evaluated
+    Raises:
+        ValueError: If expression is invalid or evaluation fails
+    """
+    result = template
+    while '${item' in result:
+        start = result.find('${item')
+        end = result.find('}', start)
+        if end == -1:
+            raise ValueError("Unclosed ${item} expression")
+        expr = result[start+2:end]
+        if expr == 'item':
+            # Simple replacement
+            value = item
+        else:
+            # Evaluate Python expression
+            try:
+                value = eval(expr, {'item': item})
+            except Exception as e:
+                raise ValueError(f"Failed to evaluate expression '{expr}': {e}")
+        result = result[:start] + str(value) + result[end+1:]
+    return result
+
 # Main meta-generation function
 def generate_meta(yaml_cfg, ignore_class=None):
     lines = [f"!config {yaml_cfg['config']}"]
@@ -116,7 +145,7 @@ def generate_meta(yaml_cfg, ignore_class=None):
             if isinstance(parent, str):
                 parent = [parent]
             for item in tmpl['input']:
-                instance_name = tmpl['pattern']['name'].replace("${item}", item)
+                instance_name = process_template_expr(tmpl['pattern']['name'], item)
                 if should_ignore_class(tmpl['class'], instance_name, ignore_class_dict):
                     continue
                 # Check if the instance name already exists and is the same class (if so, it'll just try to add new parents)
@@ -137,7 +166,7 @@ def generate_meta(yaml_cfg, ignore_class=None):
                         all_parents[instance_name].add(p)
                 if 'properties' in tmpl['pattern']:
                     for prop_key, prop_val in tmpl['pattern']['properties'].items():
-                        resolved_val = resolve_keys(prop_val.replace("${item}", item), keys)
+                        resolved_val = resolve_keys(process_template_expr(prop_val, item), keys)
                         if is_duplicate:
                             if all_instance_properties[instance_name][prop_key] == resolved_val:
                                 continue
@@ -160,12 +189,15 @@ def generate_meta(yaml_cfg, ignore_class=None):
             parent = get_template_parent()
             if isinstance(parent, str):
                 parent = [parent]
-            subset_filter = tmpl['input'].get('if_subset', [])
+            subset_filter = tmpl['input'].get('if_subset', None)
             items = []
-            for subset in subset_filter:
-                items.extend(subset_map.get(subset, []))
+            if subset_filter:
+                for subset in subset_filter:
+                    items.extend(subset_map.get(subset, []))
+            else:
+                items = [item for item in all_classes.keys() if all_classes[item] == tmpl['input']['class_name']]
             for item in items:
-                instance_name = tmpl['pattern']['name'].replace("${prefix}", prefix).replace("${item}", item)
+                instance_name = process_template_expr(tmpl['pattern']['name'].replace("${prefix}", prefix), item)
                 if should_ignore_class(tmpl['class'], instance_name, ignore_class_dict):
                     continue
                 lines.append(f"\n{instance_name} class {tmpl['class']}")
@@ -174,7 +206,7 @@ def generate_meta(yaml_cfg, ignore_class=None):
                     for p in parent:
                         lines.append(f"{instance_name} parent {p}")
                 for prop_key, prop_val in tmpl['pattern']['properties'].items():
-                    resolved_val = resolve_keys(prop_val.replace("${item}", item), keys)
+                    resolved_val = resolve_keys(process_template_expr(prop_val, item), keys)
                     lines.append(f"{instance_name} {prop_key} {resolved_val}")
                 for subset in tmpl.get('subsets', []):
                     subset_map.setdefault(subset, []).append(instance_name)
