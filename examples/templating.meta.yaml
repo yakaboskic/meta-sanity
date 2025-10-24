@@ -121,6 +121,37 @@ templates:
       properties:
         sample_id: "${item}"
         storage_temp: "neg_80c"
+        id_padded: "${str(item).zfill(3)}"  # Demonstrates expressions: 001, 002, etc.
     parent: lab_project
     subsets:
       - automated
+
+  # Example of range expansion in iter.combination
+  # Combines temperature values with a time range
+  time_series_experiments:
+    class: time_experiment
+    operation: iter.combination
+    input:
+      - name: sample
+        class_name: sample
+        if_subset: [automated]
+      - name: temp
+        values:
+          - "4c"
+          - "22c"
+      - name: timepoint
+        operation: range
+        start: 0
+        end: 24
+        inc: 6
+    prefix: timeseries
+    pattern:
+      name: "${prefix}__${item:sample}__${item:temp}__t${item:timepoint}h"
+      properties:
+        sample_id: "${item:sample}"
+        temperature: "${item:temp}"
+        hours: "${item:timepoint}"
+        description: "Sample ${item:sample} at ${item:temp} for ${item:timepoint} hours"
+    parent: "analysis__${item:sample}"
+    subsets:
+      - high_priority

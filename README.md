@@ -240,6 +240,48 @@ templates:
 
 Currently, this generation script has four core operations that can be used fairly generally and described below.
 
+### Template Expression Capabilities
+
+All template patterns support powerful expressions for dynamic values:
+
+```yaml
+pattern:
+  name: "sample__${item}"
+  properties:
+    # Simple substitution
+    id: "${item}"
+
+    # String methods
+    uppercase: "${item.upper()}"
+    lowercase: "${item.lower()}"
+
+    # String operations
+    length: "${len(item)}"
+    padded: "${str(item).zfill(5)}"      # Zero-pad to 5 digits
+
+    # Math operations (for numeric items)
+    doubled: "${item * 2}"
+    incremented: "${item + 10}"
+
+    # Type conversions
+    as_int: "${int(item)}"
+    as_float: "${float(item)}"
+
+    # Combined expressions
+    formatted: "ID_${str(item).zfill(3).upper()}"
+```
+
+**Supported functions**: `str`, `int`, `float`, `len`, `abs`, `round`, plus all string methods
+
+**Type Handling**: You can now use native YAML types without quoting:
+```yaml
+properties:
+  count: 42           # Integer (no quotes needed!)
+  ratio: 3.14         # Float
+  enabled: true       # Boolean
+  placeholder: null   # Null
+```
+
 ### 1. for_each_item Operation
 
 Use when you need to create multiple instances of a class with different values from a list:
@@ -257,6 +299,7 @@ templates:
       name: "sample__${item}"    # Creates: sample__control_a, sample__control_b, etc.
       properties:
         sample_type: "${item}"
+        length: "${len(item)}"   # Can use expressions!
     parent: root_project         # All instances inherit from this parent
     subsets:                     # Optional tags for filtering
       - automated
@@ -288,7 +331,10 @@ templates:
 
 ### 3. iter.combination Operation
 
-Use when you need to create instances from combinations of multiple inputs:
+Use when you need to create instances from combinations of multiple inputs. Supports three input types:
+- **class_name**: Reference existing class instances
+- **values**: Fixed list of values
+- **range**: Dynamic range expansion (NEW!)
 
 ```yaml
 templates:
@@ -303,17 +349,56 @@ templates:
         values:
           - "4c"
           - "22c"
-      - name: duration
-        values:
-          - "12h"
-          - "24h"
+      - name: timepoint            # Range expansion (NEW!)
+        operation: range
+        start: 1
+        end: 48
+        inc: 12
     prefix: exp
     pattern:
-      name: "${prefix}__${item:sample}__temp_${item:temperature}__dur_${item:duration}"
+      name: "${prefix}__${item:sample}__temp_${item:temperature}__t${item:timepoint}h"
       properties:
         sample_id: "${item:sample}"
         temp: "${item:temperature}"
+        duration: "${item:timepoint}h"
     parent: "analysis__${item:sample}"   # Dynamic parent based on input
+```
+
+**Range in Combination**: The `range` operation within `iter.combination` automatically expands to generate all combinations:
+```yaml
+# This input spec:
+- name: replicate
+  operation: range
+  start: 1
+  end: 3
+  inc: 1
+
+# Expands to: [1, 2, 3]
+# And combines with other inputs to create all combinations
+```
+
+**Example with all three types**:
+```yaml
+input:
+  - name: sample
+    class_name: sample           # Existing instances: [sample_A, sample_B]
+  - name: temp
+    values: ["4c", "37c"]        # Fixed values: [4c, 37c]
+  - name: time
+    operation: range
+    start: 1
+    end: 2
+    inc: 1                       # Generates: [1, 2]
+
+# Creates 2×2×2 = 8 total combinations:
+# sample_A + 4c + 1
+# sample_A + 4c + 2
+# sample_A + 37c + 1
+# sample_A + 37c + 2
+# sample_B + 4c + 1
+# sample_B + 4c + 2
+# sample_B + 37c + 1
+# sample_B + 37c + 2
 ```
 
 ### 4. range Operation

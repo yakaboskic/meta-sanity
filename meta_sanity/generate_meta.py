@@ -364,7 +364,9 @@ def generate_meta(yaml_cfg, ignore_class=None):
                         raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec missing 'name' field")
                     name = input_spec['name']
                     names.append(name)
+
                     if 'class_name' in input_spec:
+                        # From existing class instances
                         subset_filter = input_spec.get('if_subset', None)
                         items = []
                         if subset_filter:
@@ -377,9 +379,51 @@ def generate_meta(yaml_cfg, ignore_class=None):
                             logger.warning(f"Template '{tmpl_name}' with operation 'iter.combination' found no instances of class '{input_spec['class_name']}' for input '{name}'{' with subset filter ' + str(subset_filter) if subset_filter else ''}")
                         input_sets.append(items)
                     elif 'values' in input_spec:
+                        # Fixed list of values
                         input_sets.append(input_spec['values'])
+                    elif 'operation' in input_spec and input_spec['operation'] == 'range':
+                        # Range expansion
+                        if 'start' not in input_spec:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with operation 'range' missing 'start' field")
+                        if 'end' not in input_spec:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with operation 'range' missing 'end' field")
+                        if 'inc' not in input_spec:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with operation 'range' missing 'inc' field")
+
+                        try:
+                            start = float(input_spec['start'])
+                            end = float(input_spec['end'])
+                            inc = float(input_spec['inc'])
+                        except (ValueError, TypeError) as e:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with invalid numeric values in range: {e}")
+
+                        if inc == 0:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with 'inc' value of 0, which would create an infinite loop")
+                        if inc > 0 and start > end:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with positive 'inc' but 'start' ({start}) > 'end' ({end})")
+                        if inc < 0 and start < end:
+                            raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with negative 'inc' but 'start' ({start}) < 'end' ({end})")
+
+                        # Generate range values
+                        values = []
+                        current = start
+                        if inc > 0:
+                            while current <= end:
+                                values.append(current)
+                                current += inc
+                        else:
+                            while current >= end:
+                                values.append(current)
+                                current += inc
+
+                        if not values:
+                            logger.warning(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' with range that generated no values (start={start}, end={end}, inc={inc})")
+
+                        # Convert to int if whole numbers, otherwise keep as float
+                        values = [int(v) if v == int(v) else v for v in values]
+                        input_sets.append(values)
                     else:
-                        raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' missing both 'class_name' and 'values' fields")
+                        raise ValueError(f"Template '{tmpl_name}' with operation 'iter.combination' has input spec '{name}' missing 'class_name', 'values', or 'operation' field")
                 parent = get_template_parent()
                 for combination in itertools.product(*input_sets):
                     item_dict = dict(zip(names, combination))
