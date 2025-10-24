@@ -106,3 +106,21 @@ templates:
     parent: "analysis__${item:sample}"  # Each experiment depends on its sample analysis
     subsets:
       - high_priority  # Tag these as high priority experiments
+
+  # Example of range operation
+  # Creates a numbered series of samples
+  numbered_samples:
+    class: sample
+    operation: range
+    input:
+      start: 1
+      end: 10
+      inc: 1
+    pattern:
+      name: "sample__${item}"
+      properties:
+        sample_id: "${item}"
+        storage_temp: "neg_80c"
+    parent: lab_project
+    subsets:
+      - automated

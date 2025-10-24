@@ -238,7 +238,7 @@ templates:
 
 ## Templating Features
 
-Currently, this generation script has three core operations that can be used fairly generally and described below. 
+Currently, this generation script has four core operations that can be used fairly generally and described below.
 
 ### 1. for_each_item Operation
 
@@ -315,6 +315,36 @@ templates:
         temp: "${item:temperature}"
     parent: "analysis__${item:sample}"   # Dynamic parent based on input
 ```
+
+### 4. range Operation
+
+Use when you need to create a numbered sequence of instances:
+
+```yaml
+templates:
+  numbered_samples:
+    class: sample
+    operation: range
+    input:
+      start: 1        # Starting value (inclusive)
+      end: 10         # Ending value (inclusive)
+      inc: 1          # Increment value
+    pattern:
+      name: "sample__${item}"    # Creates: sample__1, sample__2, ..., sample__10
+      properties:
+        sample_id: "${item}"
+        storage_temp: "neg_80c"
+    parent: lab_project
+    subsets:
+      - automated
+```
+
+> 💡 **Tips for range Operation**
+> - The range is inclusive on both ends (start and end values are both included)
+> - Use positive `inc` for ascending sequences and negative for descending
+> - Values can be integers or floats (e.g., start: 0.5, end: 2.0, inc: 0.5)
+> - If a value is a whole number, it will be converted to an integer in the output
+> - The operation validates that the range makes sense (e.g., won't allow positive inc with start > end)
 
 ## Best Practices
 

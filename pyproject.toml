@@ -16,8 +16,25 @@ dependencies = [
     "pyyaml>=6.0.1",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
 [project.scripts]
 generate-meta = "meta_sanity.generate_meta:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["meta_sanity"] 
+packages = ["meta_sanity"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+] 
