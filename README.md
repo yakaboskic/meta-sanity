@@ -88,6 +88,58 @@ classes:
     properties:
       location: "room_101"
       maintenance_schedule: "weekly"
+    subsets:                # Optional: tag for filtering
+      - lab_equipment
+```
+
+#### Subsets in Classes
+
+Classes can be tagged with subsets, just like template-generated instances. This allows you to filter classes in templates using `if_subset`:
+
+```yaml
+subsets:
+  - name: "gwas"
+    description: "GWAS genetics data"
+  - name: "bottomline"
+    description: "Bottomline genetics data"
+
+classes:
+  root_project:
+    class: project
+    parent: null
+
+  T2D_bottomline:
+    class: genetic_data
+    parent: root_project
+    description: "T2D Bottomline"
+    properties:
+      genetic_data_type: "bottomline"
+      source_file: "${gwas_dir}/bottomline/T2D.sumstats.gz"
+    subsets:
+      - bottomline
+
+  HEIGHT_gwas:
+    class: genetic_data
+    parent: root_project
+    properties:
+      genetic_data_type: "gwas"
+      source_file: "${gwas_dir}/gwas/HEIGHT.sumstats.gz"
+    subsets:
+      - gwas
+
+templates:
+  # Only process classes tagged with 'bottomline' subset
+  bottomline_analysis:
+    class: analysis
+    operation: for_each_class
+    input:
+      class_name: genetic_data
+      if_subset: [bottomline]    # Filter by subset
+    pattern:
+      name: "analysis__${item}"
+      properties:
+        target: "${item}"
+    parent: root_project
 ```
 
 Best Practices for Basic Classes:
@@ -95,6 +147,7 @@ Best Practices for Basic Classes:
 - Avoid spaces and special characters in values
 - Use `null` explicitly for root classes
 - Keep properties consistent across similar classes
+- Use subsets to group related classes for template filtering
 
 ## Generation Order
 

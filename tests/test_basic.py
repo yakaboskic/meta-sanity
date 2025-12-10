@@ -231,3 +231,244 @@ class TestConfigValidation:
 
         with pytest.raises(ValueError, match="requires 'input' to be a dictionary"):
             generate_meta(config)
+
+
+class TestClassSubsets:
+    """Test subset support for basic class definitions."""
+
+    def test_basic_class_with_subsets(self):
+        """Basic classes can have subsets defined."""
+        config = {
+            'config': '/path/to/config.cfg',
+            'classes': {
+                'root': {
+                    'class': 'project',
+                    'parent': None,
+                    'subsets': ['core', 'infrastructure']
+                }
+            }
+        }
+
+        # Should generate without error
+        result = generate_meta(config)
+        assert 'root class project' in result
+
+    def test_class_subsets_used_in_for_each_class_filter(self):
+        """Class subsets can be filtered in for_each_class templates."""
+        config = {
+            'config': '/path/to/config.cfg',
+            'classes': {
+                'root': {
+                    'class': 'project',
+                    'parent': None,
+                },
+                'gwas_data': {
+                    'class': 'genetic_data',
+                    'parent': 'root',
+                    'properties': {
+                        'source': 'gwas',
+                    },
+                    'subsets': ['gwas']
+                },
+                'bottomline_data': {
+                    'class': 'genetic_data',
+                    'parent': 'root',
+                    'properties': {
+                        'source': 'bottomline',
+                    },
+                    'subsets': ['bottomline']
+                },
+                'other_data': {
+                    'class': 'genetic_data',
+                    'parent': 'root',
+                    'properties': {
+                        'source': 'other',
+                    },
+                    # No subsets
+                }
+            },
+            'templates': {
+                'gwas_analyses': {
+                    'class': 'analysis',
+                    'operation': 'for_each_class',
+                    'input': {
+                        'class_name': 'genetic_data',
+                        'if_subset': ['gwas']
+                    },
+                    'pattern': {
+                        'name': 'analysis__${item}',
+                        'properties': {
+                            'target': '${item}',
+                        }
+                    },
+                    'parent': 'root'
+                }
+            }
+        }
+
+        result = generate_meta(config)
+        # Should only include gwas_data since it has the 'gwas' subset
+        assert 'analysis__gwas_data class analysis' in result
+        assert 'analysis__bottomline_data class analysis' not in result
+        assert 'analysis__other_data class analysis' not in result
+
+    def test_class_subsets_used_in_iter_combination_filter(self):
+        """Class subsets can be filtered in iter.combination templates."""
+        config = {
+            'config': '/path/to/config.cfg',
+            'classes': {
+                'root': {
+                    'class': 'project',
+                    'parent': None,
+                },
+                'sample_a': {
+                    'class': 'sample',
+                    'parent': 'root',
+                    'subsets': ['batch1']
+                },
+                'sample_b': {
+                    'class': 'sample',
+                    'parent': 'root',
+                    'subsets': ['batch1']
+                },
+                'sample_c': {
+                    'class': 'sample',
+                    'parent': 'root',
+                    'subsets': ['batch2']
+                }
+            },
+            'templates': {
+                'experiments': {
+                    'class': 'experiment',
+                    'operation': 'iter.combination',
+                    'input': [
+                        {
+                            'name': 'sample',
+                            'class_name': 'sample',
+                            'if_subset': ['batch1']
+                        },
+                        {
+                            'name': 'temp',
+                            'values': ['4c', '22c']
+                        }
+                    ],
+                    'pattern': {
+                        'name': 'exp__${item:sample}__${item:temp}',
+                        'properties': {
+                            'sample_id': '${item:sample}',
+                        }
+                    },
+                    'parent': 'root'
+                }
+            }
+        }
+
+        result = generate_meta(config)
+        # Should only include samples from batch1 subset
+        assert 'exp__sample_a__4c class experiment' in result
+        assert 'exp__sample_a__22c class experiment' in result
+        assert 'exp__sample_b__4c class experiment' in result
+        assert 'exp__sample_b__22c class experiment' in result
+        # sample_c is in batch2, not batch1
+        assert 'exp__sample_c__4c class experiment' not in result
+        assert 'exp__sample_c__22c class experiment' not in result
+
+    def test_class_subsets_combined_with_template_subsets(self):
+        """Class subsets work together with template-generated subsets."""
+        config = {
+            'config': '/path/to/config.cfg',
+            'classes': {
+                'root': {
+                    'class': 'project',
+                    'parent': None,
+                },
+                'static_sample': {
+                    'class': 'sample',
+                    'parent': 'root',
+                    'subsets': ['automated']
+                }
+            },
+            'templates': {
+                'dynamic_samples': {
+                    'class': 'sample',
+                    'operation': 'for_each_item',
+                    'input': ['dynamic1', 'dynamic2'],
+                    'pattern': {
+                        'name': 'sample__${item}',
+                    },
+                    'parent': 'root',
+                    'subsets': ['automated']
+                },
+                'analyses': {
+                    'class': 'analysis',
+                    'operation': 'for_each_class',
+                    'input': {
+                        'class_name': 'sample',
+                        'if_subset': ['automated']
+                    },
+                    'pattern': {
+                        'name': 'analysis__${item}',
+                        'properties': {
+                            'target': '${item}',
+                        }
+                    },
+                    'parent': 'root'
+                }
+            }
+        }
+
+        result = generate_meta(config)
+        # Should include both static and dynamic samples with 'automated' subset
+        assert 'analysis__static_sample class analysis' in result
+        assert 'analysis__sample__dynamic1 class analysis' in result
+        assert 'analysis__sample__dynamic2 class analysis' in result
+
+    def test_multiple_class_subsets(self):
+        """Classes can belong to multiple subsets."""
+        config = {
+            'config': '/path/to/config.cfg',
+            'classes': {
+                'root': {
+                    'class': 'project',
+                    'parent': None,
+                },
+                'multi_subset_data': {
+                    'class': 'data',
+                    'parent': 'root',
+                    'subsets': ['gwas', 'published', 'validated']
+                }
+            },
+            'templates': {
+                'gwas_analysis': {
+                    'class': 'analysis',
+                    'operation': 'for_each_class',
+                    'input': {
+                        'class_name': 'data',
+                        'if_subset': ['gwas']
+                    },
+                    'pattern': {
+                        'name': 'gwas_analysis__${item}',
+                        'properties': {}
+                    },
+                    'parent': 'root'
+                },
+                'published_analysis': {
+                    'class': 'analysis',
+                    'operation': 'for_each_class',
+                    'input': {
+                        'class_name': 'data',
+                        'if_subset': ['published']
+                    },
+                    'pattern': {
+                        'name': 'published_analysis__${item}',
+                        'properties': {}
+                    },
+                    'parent': 'root'
+                }
+            }
+        }
+
+        result = generate_meta(config)
+        # multi_subset_data should appear in both analyses
+        assert 'gwas_analysis__multi_subset_data class analysis' in result
+        assert 'published_analysis__multi_subset_data class analysis' in result

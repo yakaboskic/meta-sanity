@@ -226,6 +226,9 @@ def generate_meta(yaml_cfg, ignore_class=None):
             lines.append(f"{cname} {pk} {resolved_pv}")
             all_instance_properties[cname][pk] = resolved_pv
         class_last_line_idx[cname] = len(lines)
+        # Add class to subsets if specified
+        for subset in cdef.get('subsets', []):
+            subset_map.setdefault(subset, []).append(cname)
 
     templates = yaml_cfg.get('templates', {})
 
