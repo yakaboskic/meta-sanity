@@ -1,5 +1,45 @@
 # Meta-Sanity Quick Reference
 
+## Basic Classes with Subsets
+
+Classes can be tagged with subsets for filtering in templates:
+
+```yaml
+classes:
+  root:
+    class: project
+    parent: null
+
+  gwas_data:
+    class: genetic_data
+    parent: root
+    properties:
+      source: "gwas"
+    subsets:          # Tag this class
+      - gwas
+      - published
+
+  bottomline_data:
+    class: genetic_data
+    parent: root
+    properties:
+      source: "bottomline"
+    subsets:
+      - bottomline
+
+templates:
+  # Filter classes by subset
+  gwas_analysis:
+    operation: for_each_class
+    input:
+      class_name: genetic_data
+      if_subset: [gwas]    # Only process classes with 'gwas' subset
+    pattern:
+      name: "analysis__${item}"
+      properties: {}
+    parent: root
+```
+
 ## Template Operations
 
 ### 1. for_each_item
