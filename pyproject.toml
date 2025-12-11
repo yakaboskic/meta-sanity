@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "meta-sanity"
-version = "0.1.0"
+version = "0.1.2"
 description = "A tool for generating structured meta files with support for templating and inheritance patterns"
 readme = "README.md"
 requires-python = ">=3.8"
