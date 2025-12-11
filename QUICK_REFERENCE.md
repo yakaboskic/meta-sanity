@@ -109,6 +109,22 @@ templates:
     parent: root_project
 ```
 
+#### Expressions with Named Items in iter.combination
+
+Use `item:name` in expressions to reference specific inputs:
+
+```yaml
+pattern:
+  # Round floating point values
+  name: "model__${round(item:fraction, 2)}__${item:strategy}"
+  properties:
+    # Math with named items
+    scaled: "${item:fraction / 100}"
+    sum: "${item:x + item:y}"
+    # String methods
+    upper: "${str(item:name).upper()}"
+```
+
 ### 4. range
 Create numbered sequences.
 

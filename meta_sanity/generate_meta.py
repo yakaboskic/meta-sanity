@@ -182,6 +182,86 @@ def process_template_expr(template: str, item) -> str:
 
     return result
 
+def process_combination_expr(template: str, item_dict: dict) -> str:
+    """Process template expressions containing named 'item:name' references.
+
+    Supports both simple substitution (${item:name}) and expressions
+    (${round(item:downsample_fraction, 2)}, ${item:value / 100}, etc.)
+
+    Args:
+        template: String containing ${...} expressions that reference 'item:name'
+        item_dict: Dictionary mapping item names to their values
+    Returns:
+        Processed string with all expressions evaluated
+    Raises:
+        ValueError: If expression is invalid or evaluation fails
+    """
+    if not isinstance(template, str):
+        raise ValueError(f"Template must be a string, got {type(template).__name__}: {template}")
+
+    result = template
+    # Process all ${...} expressions
+    pos = 0
+    while True:
+        start = result.find('${', pos)
+        if start == -1:
+            break
+        end = result.find('}', start)
+        if end == -1:
+            raise ValueError(f"Unclosed ${{}} expression in template: {template}")
+        expr = result[start+2:end]
+
+        # Check if expression contains 'item:' references
+        if 'item:' not in expr:
+            # Skip this expression, it doesn't reference item:name
+            pos = end + 1
+            continue
+
+        # Check if it's a simple item:name reference
+        simple_match = re.match(r'^item:(\w+)$', expr)
+        if simple_match:
+            # Simple replacement - normalize the value to string
+            name = simple_match.group(1)
+            if name not in item_dict:
+                raise ValueError(f"Unknown item reference 'item:{name}' in expression '${{'{expr}'}}'. Available items: {list(item_dict.keys())}")
+            value = normalize_value(item_dict[name])
+        else:
+            # Expression with item:name references - need to substitute and evaluate
+            # First, replace all item:name references with placeholder variable names
+            eval_expr = expr
+            local_vars = {}
+            for name, val in item_dict.items():
+                pattern = f'item:{name}'
+                if pattern in eval_expr:
+                    # Use a safe variable name for evaluation
+                    var_name = f'_item_{name}'
+                    eval_expr = eval_expr.replace(pattern, var_name)
+                    local_vars[var_name] = val
+
+            # Evaluate the expression
+            try:
+                safe_namespace = {
+                    '__builtins__': {
+                        'str': str,
+                        'int': int,
+                        'float': float,
+                        'abs': abs,
+                        'round': round,
+                        'len': len,
+                    },
+                }
+                safe_namespace.update(local_vars)
+                value = eval(eval_expr, safe_namespace)
+                value = normalize_value(value)
+            except Exception as e:
+                raise ValueError(f"Failed to evaluate expression '${{'{expr}'}}' with items={item_dict}: {e}")
+
+        result = result[:start] + value + result[end+1:]
+        # Continue searching from where we just inserted the value
+        pos = start + len(value)
+
+    return result
+
 # Main meta-generation function
 def generate_meta(yaml_cfg, ignore_class=None):
     lines = [f"!config {yaml_cfg['config']}"]
@@ -430,10 +510,11 @@ def generate_meta(yaml_cfg, ignore_class=None):
                 parent = get_template_parent()
                 for combination in itertools.product(*input_sets):
                     item_dict = dict(zip(names, combination))
-                    instance_name = tmpl['pattern']['name'].replace("${prefix}", prefix)
-
-                    for k, v in item_dict.items():
-                        instance_name = instance_name.replace(f"${{item:{k}}}", str(v))
+                    try:
+                        instance_name = tmpl['pattern']['name'].replace("${prefix}", prefix)
+                        instance_name = process_combination_expr(instance_name, item_dict)
+                    except Exception as e:
+                        raise ValueError(f"Template '{tmpl_name}' failed to process pattern name: {e}")
                     if should_ignore_class(tmpl['class'], instance_name, ignore_class_dict):
                         continue
                     lines.append(f"\n{instance_name} class {tmpl['class']}")
@@ -445,17 +526,20 @@ def generate_meta(yaml_cfg, ignore_class=None):
                     if isinstance(resolved_parent, str):
                         resolved_parent = [resolved_parent]
                     for p in resolved_parent:
-                        for k, v in item_dict.items():
-                            p = p.replace(f"${{item:{k}}}", str(v))
+                        try:
+                            p = process_combination_expr(p, item_dict)
+                        except Exception as e:
+                            raise ValueError(f"Template '{tmpl_name}' failed to process parent: {e}")
                         lines.append(f"{instance_name} parent {p}")
 
                     if 'properties' in tmpl['pattern']:
                         for prop_key, prop_val in tmpl['pattern']['properties'].items():
-                            val = prop_val
-                            for k, v in item_dict.items():
-                                val = val.replace(f"${{item:{k}}}", str(v))
+                            try:
+                                val = process_combination_expr(str(prop_val), item_dict)
                                 # Find any other ${} references in the value and resolve them
                                 val = resolve_keys(val, keys)
+                            except Exception as e:
+                                raise ValueError(f"Template '{tmpl_name}' failed to process property '{prop_key}': {e}")
                             lines.append(f"{instance_name} {prop_key} {val}")
                     for subset in tmpl.get('subsets', []):
                         subset_map.setdefault(subset, []).append(instance_name)

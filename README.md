@@ -454,6 +454,41 @@ input:
 # sample_B + 37c + 2
 ```
 
+**Expressions with Named Items**: You can use Python expressions with named item references in `iter.combination` patterns. Use `item:name` syntax to reference specific inputs:
+
+```yaml
+templates:
+  model_downsample:
+    class: model_data
+    operation: iter.combination
+    input:
+      - name: downsample_fraction
+        operation: range
+        start: 0.1
+        end: 1
+        inc: 0.1
+      - name: strategy
+        values: ["geneset", "gene"]
+      - name: model
+        class_name: model
+    pattern:
+      # Use round() to format floating point values
+      name: "model__${round(item:downsample_fraction, 2)}__${item:strategy}__${item:model}"
+      parent: "${item:model}"
+      properties:
+        downsample_strategy: "${item:strategy}"
+        # Math operations with named items
+        downsample_fraction: "${item:downsample_fraction / 100}"
+        # Multiple named items in one expression
+        combined: "${item:downsample_fraction * 100}pct_${item:strategy}"
+```
+
+Supported operations in expressions:
+- **Math**: `${item:x + item:y}`, `${item:value * 2}`, `${item:fraction / 100}`
+- **Functions**: `${round(item:value, 2)}`, `${abs(item:value)}`, `${len(str(item:name))}`
+- **Type conversion**: `${int(item:value)}`, `${float(item:value)}`, `${str(item:value)}`
+- **String methods**: `${str(item:name).upper()}`, `${str(item:value).zfill(3)}`
+
 ### 4. range Operation
 
 Use when you need to create a numbered sequence of instances:
